@@ -1,33 +1,51 @@
+#define BLYNK_PRINT Serial
 #include <Wire.h>
 #include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
 #include <WiFiUdp.h>
 #define Addr 0x1E               // 7-bit address of HMC5883 compass
 
 const char* ssid = "Dendb";
 const char* password = "csnitk123";
 
+char auth[] = "4906ef7023834762b123af1bf52f975e";
+
 WiFiUDP Udp;
 unsigned int localUdpPort = 4210;  // local port to listen on
 char incomingPacket[255];  // buffer for incoming packets
 char  replyPacekt[] = "Hi there! Got the message :-)";  // a reply string to send back
-int commaIndex[2];
-
 
 //String inputString = "";     // a string to hold incoming data
 float refAngle=180;
 double angle=180.0, error=0,errsum=0, preverror=0, derror = 0;
-float kp=8, ki=0.4, kd = 0, sel_flag = 0;
-char data1[3], data2[3], data[3];
+float kp=0, ki=0.0, kd = 0;
+
+BLYNK_WRITE(V1)
+{
+  kp = param.asFloat()/10; // assigning incoming value from pin V1 to a variable
+  Blynk.virtualWrite(5, kp);
+}
+BLYNK_WRITE(V2)
+{
+  ki = param.asFloat()/100; // assigning incoming value from pin V1 to a variable
+  Blynk.virtualWrite(6, ki);
+}
+BLYNK_WRITE(V3)
+{
+  kd = param.asFloat()/10; // assigning incoming value from pin V1 to a variable
+  Blynk.virtualWrite(7, kd);
+}
 
 void setup() {
-  Serial.printf("Connecting to %s ", ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println(" connected");
+  Blynk.begin(auth, ssid, password);
+//  Serial.printf("Connecting to %s ", ssid);
+//  WiFi.begin(ssid, password);
+//  while (WiFi.status() != WL_CONNECTED)
+//  {
+//    delay(500);
+//    Serial.print(".");
+//  }
+//  Serial.println(" connected");
 
   Udp.begin(localUdpPort);
   Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
@@ -46,6 +64,10 @@ void setup() {
 }
 
 void loop() {
+  
+  int time = micros();
+  Blynk.run();
+  
   int packetSize = Udp.parsePacket();
   if (packetSize)
   {
@@ -92,35 +114,35 @@ void loop() {
   if(z > 10000) z-=65536;
   float  heading=atan2(x, y)/0.0174532925;
   if(heading < 0) heading+=360;
-  heading=360-heading; // N=0/360, E=90, S=180, W=270 
+  //heading=360-heading; // N=0/360, E=90, S=180, W=270 
 
   
   angle = heading;
   Serial.print(angle);
   Serial.print('\t');
-  error = angle-refAngle;  
+  error = angle - refAngle;
   error = ((int(error*100)+18000+36000)%36000-18000)/100.0;
   errsum += error;
   derror = error - preverror;
   preverror = error;
-  if(errsum>500){
-    errsum=500;
+  if(errsum>1500){
+    errsum=1500;
   }
-  else if(errsum<-500){
-    errsum=-500;
+  else if(errsum<-1500){
+    errsum=-1500;
   }
   
-
   float pid=kp*error + ki*errsum + kd*derror;
+  
   if(pid>0){
-    if(pid>1023){
+    if(pid>900){
       pid=1023;
     }
     analogWrite(4,pid);
     analogWrite(5,0);
   }
   else{
-    if(pid<-1023){
+    if(pid<-900){
       pid=-1023;
     }
     analogWrite(5,-1*pid);
@@ -129,5 +151,10 @@ void loop() {
   Serial.print(pid);
   Serial.print('\t');
   Serial.println(error);
-}
+  
+  delay(8);
+
+  Blynk.virtualWrite(8, error);
+  //Blynk.virtualWrite(9, pid);
+ }
 
